@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ERP → 飞书 同步管理端 · Demo</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --line:#334155; --tx:#e2e8f0; --mut:#94a3b8;
+          --brand:#38bdf8; --ok:#34d399; --warn:#fbbf24; --err:#f87171; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--tx); font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; padding:24px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:var(--mut); font-size:13px; margin-bottom:20px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .card h2 { font-size:14px; margin-bottom:12px; color:var(--brand); }
+  .badge { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; margin-left:6px; }
+  .b-ok { background:rgba(52,211,153,.15); color:var(--ok); }
+  .b-off{ background:rgba(148,163,184,.15); color:var(--mut); }
+  label { display:block; color:var(--mut); font-size:12px; margin:8px 0 3px; }
+  input, select { width:100%; padding:6px 8px; border-radius:8px; border:1px solid var(--line);
+                  background:#0b1220; color:var(--tx); font-size:13px; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  button { margin-top:12px; padding:7px 14px; border:0; border-radius:8px; cursor:pointer; font-size:13px;
+           background:var(--brand); color:#062033; font-weight:600; }
+  button.ghost { background:transparent; color:var(--mut); border:1px solid var(--line); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:500; white-space:nowrap; }
+  .op a { margin-right:8px; color:var(--brand); cursor:pointer; text-decoration:none; }
+  .mono { font-family:Consolas,monospace; font-size:12px; }
+  #log { max-height:220px; overflow:auto; font-family:Consolas,monospace; font-size:12px; color:var(--mut); }
+  .pill { display:inline-block; padding:0 8px; border-radius:99px; font-size:12px; background:rgba(56,189,248,.12); color:var(--brand); margin:2px 4px 2px 0;}
+</style>
+</head>
+<body>
+  <h1>ERP → 飞书多维表 · 同步管理端</h1>
+  <div class="sub">Demo 骨架 · 业务线可插拔 · 三种调度模式 · 换目标表不改代码 · 全程留痕</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>系统状态</h2>
+      <div id="health">加载中...</div>
+      <div style="margin-top:10px" id="biz"></div>
+    </div>
+    <div class="card">
+      <h2>7 日成功率</h2>
+      <div id="stats">加载中...</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>创建任务</h2>
+      <label>任务名称</label><input id="f-name" value="demo-采购订单" />
+      <label>业务线</label><select id="f-biz"></select>
+      <div class="row2">
+        <div><label>调度模式</label>
+          <select id="f-mode"><option value="daily">每日定点</option><option value="interval">固定间隔</option>
+          <option value="multi_daily">每日多点</option></select></div>
+        <div><label>每日时间(HH:MM)</label><input id="f-time" value="09:00" /></div>
+      </div>
+      <div class="row2">
+        <div><label>开始日期</label><input id="f-start" value="" type="date" /></div>
+        <div><label>结束日期</label><input id="f-end" value="" type="date" /></div>
+      </div>
+      <button onclick="createTask()">创建任务</button>
+    </div>
+    <div class="card">
+      <h2>一键同步（立即跑一次）</h2>
+      <label>业务线</label><select id="s-biz"></select>
+      <div class="row2">
+        <div><label>开始日期</label><input id="s-start" type="date" /></div>
+        <div><label>结束日期</label><input id="s-end" type="date" /></div>
+      </div>
+      <button onclick="syncOnce()">开始同步</button>
+      <div id="sync-result" style="margin-top:10px;font-size:13px"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <h2>任务列表</h2>
+    <table><thead><tr><th>名称</th><th>业务线</th><th>模式</th><th>时间</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody id="tasks"></tbody></table>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <h2>执行历史（最新 10 条）</h2>
+    <table><thead><tr><th>时间</th><th>任务</th><th>业务线</th><th>结果</th><th>拉取</th><th>写入</th><th>耗时</th></tr></thead>
+    <tbody id="history"></tbody></table>
+  </div>
+
+  <div class="card"><h2>操作日志</h2><div id="log"></div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = async (u, o) => { const r = await fetch(u, o); const j = await r.json(); return j; };
+const today = () => { const d = new Date(); return d.toISOString().slice(0,10); };
+const weekAgo = () => { const d = new Date(Date.now()-6*864e5); return d.toISOString().slice(0,10); };
+$('#f-start').value = weekAgo(); $('#f-end').value = today();
+$('#s-start').value = weekAgo(); $('#s-end').value = today();
+
+async function loadAll() {
+  const health = await api('/health');
+  $('#health').innerHTML = `调度器: <b>${health.data.scheduler.running?'运行中':'已停止'}</b> · 任务数: ${health.data.db_tasks_count}<br/>已注册业务线: <span class="pill">${health.data.registered_biz_types.join('</span><span class="pill">')}</span>`;
+  const stats = await api('/api/history/stats?days=7');
+  $('#stats').innerHTML = `近 ${stats.data.days} 天执行 <b>${stats.data.total_runs}</b> 次 · 成功 <b>${stats.data.success_runs}</b> 次 · 成功率 <b>${stats.data.success_rate}%</b><br/>累计拉取 ${stats.data.total_fetched} 行 / 写入 ${stats.data.total_written} 行`;
+  loadTasks(); loadHistory(); loadLog(); loadBiz();
+}
+
+async function loadBiz() {
+  const t = await api('/health');
+  const types = t.data.registered_biz_types;
+  for (const sel of ['#f-biz','#s-biz']) {
+    $(sel).innerHTML = types.map(x=>`<option>${x}</option>`).join('');
+  }
+}
+
+async function loadTasks() {
+  const r = await api('/api/tasks');
+  $('#tasks').innerHTML = (r.data||[]).map(t=>`<tr>
+    <td>${t.name}</td><td>${t.biz_type}</td><td>${t.mode}</td>
+    <td class="mono">${t.mode==='multi_daily'?(t.daily_times||[]).join(',') : t.mode==='interval'?(t.interval_seconds+'s'):t.daily_time}</td>
+    <td><span class="badge ${t.enabled?'b-ok':'b-off'}">${t.enabled?'已启用':'已停用'}</span></td>
+    <td class="op">
+      <a onclick="act('${t.task_id}','start')">启动</a>
+      <a onclick="act('${t.task_id}','trigger')">触发</a>
+      <a onclick="act('${t.task_id}','stop')">停止</a>
+      <a onclick="del('${t.task_id}')" style="color:var(--err)">删除</a>
+    </td></tr>`).join('') || '<tr><td colspan=6 style="color:var(--mut)">暂无任务</td></tr>';
+}
+
+async function act(id, kind) {
+  const r = await api(`/api/tasks/${id}/${kind}`, {method:'POST'});
+  if (r.code!==0) alert(r.detail||r.message);
+  loadTasks();
+}
+async function del(id) {
+  if (!confirm('删除该任务？')) return;
+  await api(`/api/tasks/${id}`, {method:'DELETE'}); loadTasks(); loadLog();
+}
+
+async function createTask() {
+  const body = { name:$('#f-name').value, biz_type:$('#f-biz').value, mode:$('#f-mode').value,
+    daily_time:$('#f-time').value, start_date:$('#f-start').value, end_date:$('#f-end').value };
+  const r = await api('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  if (r.code!==0) alert(r.detail||r.message); else { await act(r.data.task_id,'start'); }
+  loadAll();
+}
+
+async function syncOnce() {
+  const q = new URLSearchParams({biz_type:$('#s-biz').value, start_date:$('#s-start').value, end_date:$('#s-end').value});
+  $('#sync-result').innerHTML = '同步中...';
+  const r = await api('/api/sync/once?'+q, {method:'POST'});
+  $('#sync-result').innerHTML = r.code===0
+    ? `<span style="color:var(--ok)">✓ 完成：拉取 ${r.data.fetched} 条 / 写入 ${r.data.written} 条 / 耗时 ${r.data.duration}s</span>`
+    : `<span style="color:var(--err)">✗ ${r.detail||r.message}</span>`;
+  loadHistory(); loadLog();
+}
+
+async function loadHistory() {
+  const r = await api('/api/history?limit=10');
+  $('#history').innerHTML = (r.data||[]).map(h=>`<tr>
+    <td class="mono">${new Date(h.time*1000).toLocaleString('zh-CN')}</td>
+    <td>${h.task_name}</td><td>${h.biz_type}</td>
+    <td><span class="badge ${h.status==='success'?'b-ok':'b-off'}" style="${h.status==='fail'?'background:rgba(248,113,113,.15);color:var(--err)':''}">${h.status==='success'?'成功':'失败'}</span></td>
+    <td>${h.fetched}</td><td>${h.written}</td><td class="mono">${h.duration}s</td></tr>`).join('') || '<tr><td colspan=7 style="color:var(--mut)">暂无执行记录</td></tr>';
+}
+
+async function loadLog() {
+  const r = await api('/api/operation_log?limit=20');
+  $('#log').innerHTML = (r.data||[]).map(l=>`[${new Date(l.time*1000).toLocaleString('zh-CN')}] ${l.action} · ${l.target} — ${l.detail}`).join('\n');
+}
+
+loadAll();
+setInterval(loadTasks, 5000);
+</script>
+</body>
+</html>
