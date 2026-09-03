@@ -27,6 +27,28 @@ erp-feishu-sync/
 └── README.md
 ```
 
+## 界面预览（运行效果）
+
+<p align="center">
+  <img src="screenshots/01-dashboard.png" width="720" alt="管理仪表盘：累计导入 270 万+ 行，成功率 98.2%">
+  <br><sub>▲ 管理仪表盘 · 7 天成功率 98.2% · 累计导入 270 万+ 行</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/02-taskboard.png" width="720" alt="任务看板：7 条业务线定时调度">
+  <br><sub>▲ 任务看板 · 7 条业务线（interval / daily / multi_daily 三种调度模式）</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/03-history.png" width="720" alt="执行历史：同步记录与耗时统计">
+  <br><sub>▲ 执行历史 · 单次同步记录 / 耗时 / 结果全程留痕</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/04-config.png" width="720" alt="配置管理：7 条业务线 + 换表不改代码">
+  <br><sub>▲ 配置管理 · 同步目标前端可配（换表不改代码）</sub>
+</p>
+
 ## 快速开始
 
 ```bash
